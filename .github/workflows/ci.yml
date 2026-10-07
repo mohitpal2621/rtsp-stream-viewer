@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then echo "$unformatted"; exit 1; fi
+      - run: go vet ./...
+      - run: go test -race ./...
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  image:
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker build -t rtsp-stream-viewer .
+      - run: docker run -d --name viewer -p 8080:8080 rtsp-stream-viewer
+      - name: Wait for the server
+        run: |
+          for i in $(seq 30); do
+            curl -sf localhost:8080/healthz && exit 0
+            sleep 1
+          done
+          exit 1
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Smoke test a demo stream end to end
+        run: node scripts/smoke-test.mjs http://localhost:8080
+      - name: Container logs
+        if: always()
+        run: docker logs viewer
