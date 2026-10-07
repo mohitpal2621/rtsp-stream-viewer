@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"os/exec"
 	"os/signal"
 	"syscall"
 	"time"
@@ -26,14 +25,16 @@ func main() {
 	}
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: parseLevel(cfg.LogLevel)}))
 
-	if _, err := exec.LookPath(cfg.FFmpegPath); err != nil {
-		log.Error("ffmpeg not found; install it or set FFMPEG_PATH", "path", cfg.FFmpegPath)
+	timeoutOption, err := stream.SocketTimeoutOption(cfg.FFmpegPath)
+	if err != nil {
+		log.Error("can't run ffmpeg; install it or set FFMPEG_PATH", "path", cfg.FFmpegPath, "error", err)
 		os.Exit(1)
 	}
 
 	ffmpeg := &stream.FFmpeg{
 		Path:          cfg.FFmpegPath,
 		RTSPTransport: cfg.RTSPTransport,
+		TimeoutOption: timeoutOption,
 		StallTimeout:  cfg.StallTimeout,
 		Log:           log,
 	}

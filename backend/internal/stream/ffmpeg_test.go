@@ -46,3 +46,31 @@ func TestArgs(t *testing.T) {
 		t.Errorf("transcode mode args: %v", transcodeArgs)
 	}
 }
+
+func TestFFmpegMajorVersion(t *testing.T) {
+	cases := map[string]int{
+		"ffmpeg version 4.4.2-0ubuntu0.22.04.1 Copyright (c) 2000-2021": 4,
+		"ffmpeg version 6.1.1 Copyright (c) 2000-2023":                  6,
+		"ffmpeg version n7.1 Copyright (c) 2000-2024":                   7,
+		"ffmpeg version 9.0.1-full_build-www.gyan.dev Copyright (c)":    9,
+	}
+	for out, want := range cases {
+		if got, ok := ffmpegMajorVersion(out); !ok || got != want {
+			t.Errorf("ffmpegMajorVersion(%q) = %d, %v; want %d", out, got, ok, want)
+		}
+	}
+	if _, ok := ffmpegMajorVersion("ffmpeg version N-112233-gabcdef Copyright"); ok {
+		t.Error("git builds have no release number and should not parse")
+	}
+}
+
+func TestArgsTimeoutOption(t *testing.T) {
+	old := (&FFmpeg{RTSPTransport: "tcp", TimeoutOption: "-stimeout"}).Args(RunOptions{URL: "rtsp://cam/live"})
+	if !slices.Contains(old, "-stimeout") || slices.Contains(old, "-timeout") {
+		t.Errorf("FFmpeg 4 should get -stimeout: %v", old)
+	}
+	def := (&FFmpeg{RTSPTransport: "tcp"}).Args(RunOptions{URL: "rtsp://cam/live"})
+	if !slices.Contains(def, "-timeout") {
+		t.Errorf("default should be -timeout: %v", def)
+	}
+}

@@ -1,11 +1,15 @@
 package stream
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os/exec"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -46,8 +50,37 @@ func (e *SourceError) Error() string { return e.Message }
 type FFmpeg struct {
 	Path          string        // ffmpeg binary
 	RTSPTransport string        // "tcp" or "udp"
+	TimeoutOption string        // RTSP socket timeout option; see SocketTimeoutOption
 	StallTimeout  time.Duration // kill ffmpeg if it produces no output for this long
 	Log           *slog.Logger
+}
+
+// SocketTimeoutOption runs ffmpeg -version and returns the name of the RTSP
+// socket timeout option for that build. FFmpeg 5 renamed -stimeout to
+// -timeout; before that, -timeout made the RTSP demuxer listen for an
+// incoming connection instead. It returns an error if ffmpeg doesn't run.
+func SocketTimeoutOption(path string) (string, error) {
+	out, err := exec.Command(path, "-hide_banner", "-version").Output()
+	if err != nil {
+		return "", err
+	}
+	if major, ok := ffmpegMajorVersion(string(out)); ok && major < 5 {
+		return "-stimeout", nil
+	}
+	return "-timeout", nil
+}
+
+var versionPattern = regexp.MustCompile(`^ffmpeg version n?(\d+)\.`)
+
+// ffmpegMajorVersion reads the major version from ffmpeg -version output.
+// Builds from git report no release number, and those are recent.
+func ffmpegMajorVersion(out string) (int, bool) {
+	m := versionPattern.FindStringSubmatch(out)
+	if m == nil {
+		return 0, false
+	}
+	major, err := strconv.Atoi(m[1])
+	return major, err == nil
 }
 
 // Args builds the ffmpeg command line for opts.
@@ -55,7 +88,7 @@ func (f *FFmpeg) Args(opts RunOptions) []string {
 	args := []string{
 		"-hide_banner", "-loglevel", "error", "-nostdin",
 		"-rtsp_transport", f.RTSPTransport,
-		"-timeout", "10000000", // socket I/O timeout in microseconds
+		cmp.Or(f.TimeoutOption, "-timeout"), "10000000", // socket I/O timeout in microseconds
 		"-i", opts.URL,
 		"-map", "0:v:0", "-an", "-sn", "-dn",
 	}
@@ -92,8 +125,10 @@ func (f *FFmpeg) Run(ctx context.Context, opts RunOptions, emit func(Segment)) e
 		return fmt.Errorf("start ffmpeg: %w", err)
 	}
 
-	var lastOutput atomic.Int64
-	lastOutput.Store(time.Now().UnixNano())
+	// The watchdog counts bytes, not fragments, so a camera with a long
+	// keyframe interval isn't mistaken for a stalled one.
+	out := &activityReader{r: stdout}
+	out.touch()
 	var stalled atomic.Bool
 	go func() {
 		tick := time.NewTicker(time.Second)
@@ -103,7 +138,7 @@ func (f *FFmpeg) Run(ctx context.Context, opts RunOptions, emit func(Segment)) e
 			case <-runCtx.Done():
 				return
 			case <-tick.C:
-				if time.Since(time.Unix(0, lastOutput.Load())) > f.StallTimeout {
+				if out.idleFor() > f.StallTimeout {
 					stalled.Store(true)
 					cancel()
 					return
@@ -112,8 +147,7 @@ func (f *FFmpeg) Run(ctx context.Context, opts RunOptions, emit func(Segment)) e
 		}
 	}()
 
-	readErr := readSegments(stdout, func(seg Segment) error {
-		lastOutput.Store(time.Now().UnixNano())
+	readErr := readSegments(out, func(seg Segment) error {
 		if seg.Init && !opts.Transcode && !isH264(seg.Codec) {
 			return &UnsupportedCodecError{Codec: seg.Codec}
 		}
@@ -131,6 +165,10 @@ func (f *FFmpeg) Run(ctx context.Context, opts RunOptions, emit func(Segment)) e
 		return codecErr
 	case stalled.Load():
 		return &SourceError{Message: fmt.Sprintf("No video received for %s", f.StallTimeout), Detail: stderr.String()}
+	case errors.Is(readErr, errBoxTooLarge):
+		return &SourceError{Message: "A single keyframe interval was too large to relay; lower the camera's keyframe interval or bitrate", Detail: readErr.Error()}
+	case readErr != nil:
+		return &SourceError{Message: "FFmpeg sent output the server couldn't read", Detail: readErr.Error()}
 	}
 	detail := stderr.String()
 	f.Log.Debug("ffmpeg exited", "read_err", readErr, "wait_err", waitErr, "stderr", detail)
@@ -170,6 +208,26 @@ func describeFailure(stderr string, waitErr error) string {
 func lastLine(s string) string {
 	lines := strings.Split(strings.TrimSpace(s), "\n")
 	return strings.TrimSpace(lines[len(lines)-1])
+}
+
+// activityReader records when data last arrived.
+type activityReader struct {
+	r    io.Reader
+	last atomic.Int64 // unix nanoseconds
+}
+
+func (a *activityReader) Read(p []byte) (int, error) {
+	n, err := a.r.Read(p)
+	if n > 0 {
+		a.touch()
+	}
+	return n, err
+}
+
+func (a *activityReader) touch() { a.last.Store(time.Now().UnixNano()) }
+
+func (a *activityReader) idleFor() time.Duration {
+	return time.Since(time.Unix(0, a.last.Load()))
 }
 
 // tailBuffer is an io.Writer that keeps only the last max bytes written.
