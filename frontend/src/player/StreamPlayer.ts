@@ -46,6 +46,7 @@ export class StreamPlayer {
   private buffer: SourceBuffer | null = null
   private queue: ArrayBuffer[] = []
   private running = false
+  private attempt = 0 // bumped by every connect() and stop(), so a superseded connect() can tell
   private reconnectTimer: number | undefined
   private failures = 0
   private live = false
@@ -72,6 +73,7 @@ export class StreamPlayer {
    */
   stop(): void {
     this.running = false
+    this.attempt++
     window.clearTimeout(this.reconnectTimer)
     this.closeSocket()
     this.queue = []
@@ -90,12 +92,13 @@ export class StreamPlayer {
   }
 
   private async connect(): Promise<void> {
+    const attempt = ++this.attempt
     this.setState({ kind: 'connecting' })
     let id: string
     try {
       id = await registerStream(this.rtspUrl)
     } catch (err) {
-      if (!this.running) return
+      if (attempt !== this.attempt) return
       if (err instanceof ApiError && err.status === 400) {
         this.setState({ kind: 'failed', message: err.message })
         return
@@ -103,7 +106,9 @@ export class StreamPlayer {
       this.scheduleReconnect(err instanceof ApiError ? err.message : 'Can’t reach the stream server.')
       return
     }
-    if (!this.running) return
+    // Paused, or paused and played again, while registering: a newer
+    // connect() owns the player now, so opening a socket here would leak it.
+    if (attempt !== this.attempt) return
 
     const ws = new WebSocket(streamSocketUrl(id))
     ws.binaryType = 'arraybuffer'
