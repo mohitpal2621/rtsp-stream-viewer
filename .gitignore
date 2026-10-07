@@ -1,0 +1,21 @@
+# Private notes and test materials
+materials/
+CLAUDE.md
+.claude/
+
+# Dependencies and build output
+node_modules/
+dist/
+/backend/server
+*.exe
+
+# Local environment
+.env
+.env.*
+!.env.example
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
