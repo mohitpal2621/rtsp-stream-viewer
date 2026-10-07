@@ -24,7 +24,7 @@ Open http://localhost:8080 and click one of the demo streams. The same image is 
 
 ### Without Docker
 
-You need Go 1.23+, Node 22+, FFmpeg on your `PATH` and [MediaMTX](https://github.com/bluenviron/mediamtx/releases).
+You need Go 1.23+, Node 22+, FFmpeg 4.4 or newer on your `PATH` and [MediaMTX](https://github.com/bluenviron/mediamtx/releases).
 
 1. Start MediaMTX with its default config and publish a test stream to it:
 
@@ -68,7 +68,7 @@ flowchart LR
     tab1 -- "Media Source<br/>Extensions" --> video1["&lt;video&gt;"]
 ```
 
-1. When a tile starts, the browser sends the RTSP URL to `POST /api/streams`. The server validates it and returns a stream ID, which is a hash of the URL. The same URL always gets the same ID, so every viewer of a camera shares one session, and IDs stay valid across server restarts.
+1. When a tile starts, the browser sends the RTSP URL to `POST /api/streams`. The server validates it and returns a stream ID, an HMAC of the URL with a key the server picks at startup. The same URL gets the same ID, so every viewer of a camera shares one session, but nobody can work out an ID without knowing the URL. The browser registers the URL again every time it connects, so a server restart doesn't break anything.
 2. The browser opens `GET /api/streams/{id}/ws`. The first viewer starts FFmpeg for that session.
 3. FFmpeg reads the camera and writes fragmented MP4 to its stdout. For H.264 cameras it copies the video without re-encoding (`-c:v copy`), and it starts a new fragment at every keyframe (`-movflags frag_keyframe+empty_moov`).
 4. The Go session reads MP4 boxes from the pipe. It keeps the initialisation segment (`ftyp` + `moov`) and sends each `moof` + `mdat` fragment to every connected viewer.
@@ -127,7 +127,7 @@ The backend reads environment variables:
 | Variable | Default | Description |
 | --- | --- | --- |
 | `PORT` | `8080` | HTTP port |
-| `ALLOWED_ORIGINS` | `*` | Comma-separated browser origins allowed to call the API and open WebSockets. Requests from the server's own origin are always allowed |
+| `ALLOWED_ORIGINS` | (none) | Other browser origins allowed to call the API and open WebSockets, comma-separated, or `*` for any. Requests from the server's own origin are always allowed |
 | `FFMPEG_PATH` | `ffmpeg` | FFmpeg binary |
 | `RTSP_TRANSPORT` | `tcp` | `tcp` or `udp` for pulling RTSP |
 | `IDLE_TIMEOUT` | `20s` | How long FFmpeg keeps running after the last viewer leaves |
@@ -147,7 +147,7 @@ The frontend reads `VITE_API_URL` at build time. Leave it unset when the backend
 | --- | --- |
 | `POST /api/streams` | Body `{"url": "rtsp://..."}`. Returns `{"id": "..."}`, or `{"error": "..."}` with 400 for an invalid URL and 503 when the server is at `MAX_STREAMS` |
 | `GET /api/streams/{id}/ws` | WebSocket carrying the stream, as described above |
-| `GET /api/streams` | Active sessions with state, viewer count and codec. Passwords in URLs are redacted |
+| `GET /api/streams` | Active sessions with state, viewer count and codec. IDs and URLs are left out, so the list can't be used to open someone else's camera |
 | `GET /api/config` | Demo streams for the UI |
 | `GET /healthz` | Health check |
 
@@ -193,7 +193,7 @@ To host the frontend separately, for example on Vercel, use `frontend` as the ro
 - Video only. Audio is dropped, because cameras often send G.711, which browsers can't play from MP4.
 - Latency is at least one keyframe interval of the camera, as explained above.
 - On iPhone, playback needs iOS 17.1 or later, which added `ManagedMediaSource`.
-- There is no authentication, and the server connects to any RTSP URL a visitor enters, including addresses on its own network. A real deployment would need login and an allowlist of camera hosts.
+- There is no authentication, and the server connects to any RTSP URL a visitor enters, including addresses on its own network. Watching a stream requires knowing its URL, but a real deployment would need login and an allowlist of camera hosts.
 - The list of streams is stored in the browser, so it doesn't follow you to another device.
 
 ## Possible improvements
