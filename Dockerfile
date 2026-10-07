@@ -36,6 +36,7 @@ COPY --from=backend /out/server /usr/local/bin/server
 COPY --from=frontend /src/dist /srv/www
 COPY demo/mediamtx.yml /etc/mediamtx.yml
 COPY demo/entrypoint.sh /usr/local/bin/entrypoint
+RUN chmod 755 /usr/local/bin/entrypoint
 
 ENV PORT=8080 \
     STATIC_DIR=/srv/www \
