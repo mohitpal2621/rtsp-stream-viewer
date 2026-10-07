@@ -1,0 +1,16 @@
+# Render Blueprint: one Docker web service on the free plan running the whole
+# demo (backend, frontend and demo RTSP sources). See README, "Deploying".
+services:
+  - type: web
+    name: rtsp-stream-viewer
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      # A free instance has a fraction of one CPU; copying H.264 is cheap but
+      # transcoding is not, so keep the number of concurrent streams modest.
+      - key: MAX_STREAMS
+        value: "8"

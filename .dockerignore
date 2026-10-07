@@ -1,0 +1,8 @@
+.git
+.github
+materials
+CLAUDE.md
+.claude
+**/node_modules
+**/dist
+*.exe

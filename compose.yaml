@@ -1,0 +1,8 @@
+services:
+  viewer:
+    build: .
+    ports:
+      - "8080:8080" # web app and API
+      - "8554:8554" # demo RTSP streams, e.g. for VLC
+    environment:
+      LOG_LEVEL: info
