@@ -17,6 +17,11 @@ const (
 // messages to the browser: JSON text for status and init metadata, binary for
 // MP4 segments.
 func (s *Server) handleStreamSocket(w http.ResponseWriter, r *http.Request) {
+	// Checked here as well as in Upgrade so a refused page never starts FFmpeg.
+	if !s.originAllowed(r) {
+		writeError(w, http.StatusForbidden, "origin not allowed")
+		return
+	}
 	sess, ok := s.streams.Get(r.PathValue("id"))
 	if !ok {
 		writeError(w, http.StatusNotFound, "unknown stream; register the URL again")

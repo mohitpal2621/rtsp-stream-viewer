@@ -180,8 +180,6 @@ func (s *Session) isClosed() bool {
 
 // Info is a snapshot of a session for the API.
 type Info struct {
-	ID          string    `json:"id"`
-	URL         string    `json:"url"`
 	State       State     `json:"state"`
 	Error       string    `json:"error,omitempty"`
 	Viewers     int       `json:"viewers"`
@@ -194,8 +192,6 @@ func (s *Session) Info() Info {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return Info{
-		ID:          s.ID,
-		URL:         RedactURL(s.URL),
 		State:       s.status.State,
 		Error:       s.status.Error,
 		Viewers:     len(s.subs),

@@ -11,7 +11,7 @@ import (
 
 type Config struct {
 	Addr           string        // PORT: listen port (default 8080)
-	AllowedOrigins []string      // ALLOWED_ORIGINS: comma-separated browser origins, or "*"
+	AllowedOrigins []string      // ALLOWED_ORIGINS: extra browser origins (comma-separated) or "*"; same-origin is always allowed
 	FFmpegPath     string        // FFMPEG_PATH: ffmpeg binary (default "ffmpeg")
 	RTSPTransport  string        // RTSP_TRANSPORT: "tcp" (default) or "udp"
 	IdleTimeout    time.Duration // IDLE_TIMEOUT: how long FFmpeg keeps running with no viewers
@@ -31,7 +31,7 @@ type DemoStream struct {
 func Load() (Config, error) {
 	c := Config{
 		Addr:           ":" + env("PORT", "8080"),
-		AllowedOrigins: splitList(env("ALLOWED_ORIGINS", "*")),
+		AllowedOrigins: splitList(env("ALLOWED_ORIGINS", "")),
 		FFmpegPath:     env("FFMPEG_PATH", "ffmpeg"),
 		RTSPTransport:  env("RTSP_TRANSPORT", "tcp"),
 		StaticDir:      env("STATIC_DIR", ""),

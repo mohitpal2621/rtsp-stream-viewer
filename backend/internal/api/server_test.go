@@ -147,6 +147,22 @@ func TestOrigins(t *testing.T) {
 	if err == nil || resp.StatusCode != http.StatusForbidden {
 		t.Errorf("WebSocket from a foreign origin: err=%v status=%v, want 403", err, resp.StatusCode)
 	}
+
+	// The refused request must not have subscribed, which would start FFmpeg.
+	list, err := http.Get(srv.URL + "/api/streams")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer list.Body.Close()
+	var body struct {
+		Streams []stream.Info `json:"streams"`
+	}
+	if err := json.NewDecoder(list.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Streams) != 1 || body.Streams[0].Viewers != 0 {
+		t.Errorf("streams after a refused WebSocket: %+v, want one with no viewers", body.Streams)
+	}
 }
 
 func TestDemoConfig(t *testing.T) {

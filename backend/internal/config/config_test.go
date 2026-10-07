@@ -13,8 +13,8 @@ func TestLoadDefaults(t *testing.T) {
 	if c.Addr != ":8080" || c.RTSPTransport != "tcp" || c.MaxStreams != 16 || c.IdleTimeout != 20*time.Second {
 		t.Errorf("unexpected defaults: %+v", c)
 	}
-	if len(c.AllowedOrigins) != 1 || c.AllowedOrigins[0] != "*" {
-		t.Errorf("AllowedOrigins = %v", c.AllowedOrigins)
+	if len(c.AllowedOrigins) != 0 {
+		t.Errorf("AllowedOrigins = %v, want none (same-origin only)", c.AllowedOrigins)
 	}
 }
 

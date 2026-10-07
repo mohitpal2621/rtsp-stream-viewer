@@ -1,6 +1,8 @@
 package stream
 
 import (
+	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -27,6 +29,7 @@ type Manager struct {
 	idleTimeout time.Duration
 	maxStreams  int
 	log         *slog.Logger
+	idKey       []byte // keys stream IDs so they can't be derived from a URL
 
 	mu       sync.Mutex
 	sessions map[string]*Session
@@ -39,6 +42,7 @@ func NewManager(run Runner, idleTimeout time.Duration, maxStreams int, log *slog
 		idleTimeout: idleTimeout,
 		maxStreams:  maxStreams,
 		log:         log,
+		idKey:       randomKey(),
 		sessions:    make(map[string]*Session),
 	}
 }
@@ -50,7 +54,7 @@ func (m *Manager) Register(rawURL string) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	id := streamID(u)
+	id := m.streamID(u)
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -78,7 +82,8 @@ func (m *Manager) Get(id string) (*Session, bool) {
 	return s, ok
 }
 
-// List returns a snapshot of every session, oldest first.
+// List returns a snapshot of every session, oldest first. It leaves out IDs
+// and URLs, which would let anyone watch cameras other people added.
 func (m *Manager) List() []Info {
 	m.mu.Lock()
 	sessions := make([]*Session, 0, len(m.sessions))
@@ -148,18 +153,33 @@ func ValidateURL(raw string) (string, error) {
 	return raw, nil
 }
 
-// RedactURL hides the password in a URL so it can be logged or shown.
+// RedactURL hides the password and the query string, where some cameras
+// take credentials, so a URL can be logged.
 func RedactURL(raw string) string {
 	u, err := url.Parse(raw)
 	if err != nil {
 		return "(unparseable URL)"
 	}
+	if u.RawQuery != "" {
+		u.RawQuery = "redacted"
+	}
 	return u.Redacted()
 }
 
-// streamID derives a stable ID from the URL, so re-registering the same URL,
-// for example after a server restart, gives clients the same ID.
-func streamID(u string) string {
-	sum := sha256.Sum256([]byte(u))
-	return hex.EncodeToString(sum[:8])
+func randomKey() []byte {
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		panic("crypto/rand failed: " + err.Error())
+	}
+	return key
+}
+
+// streamID maps a URL to its session ID. The same URL gets the same ID for
+// the life of the process, so viewers of one camera share a session, but the
+// ID can't be computed from the URL by anyone else, and knowing an ID doesn't
+// reveal the URL. A client that has the URL can always register it again.
+func (m *Manager) streamID(u string) string {
+	mac := hmac.New(sha256.New, m.idKey)
+	mac.Write([]byte(u))
+	return hex.EncodeToString(mac.Sum(nil)[:8])
 }

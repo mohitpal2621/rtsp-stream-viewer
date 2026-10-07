@@ -323,8 +323,26 @@ func TestValidateURL(t *testing.T) {
 }
 
 func TestRedactURL(t *testing.T) {
-	got := RedactURL("rtsp://admin:secret@cam.local:554/h264")
-	if strings.Contains(got, "secret") || !strings.Contains(got, "admin") {
-		t.Errorf("RedactURL = %q", got)
+	for _, raw := range []string{
+		"rtsp://admin:secret@cam.local:554/h264",
+		"rtsp://cam.local/live?user=admin&password=secret",
+	} {
+		if got := RedactURL(raw); strings.Contains(got, "secret") || !strings.Contains(got, "cam.local") {
+			t.Errorf("RedactURL(%q) = %q", raw, got)
+		}
+	}
+}
+
+func TestStreamIDsDependOnTheServerKey(t *testing.T) {
+	a := NewManager(newFakeSource().Run, time.Minute, 4, discard)
+	b := NewManager(newFakeSource().Run, time.Minute, 4, discard)
+	defer a.Close()
+	defer b.Close()
+	const u = "rtsp://cam.local/live"
+	if a.streamID(u) != a.streamID(u) {
+		t.Error("a URL should keep its ID within one server")
+	}
+	if a.streamID(u) == b.streamID(u) {
+		t.Error("IDs should not be predictable across servers")
 	}
 }
