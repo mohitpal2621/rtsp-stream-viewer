@@ -1,5 +1,7 @@
 # RTSP Stream Viewer
 
+[![CI](https://github.com/mohitpal2621/rtsp-stream-viewer/actions/workflows/ci.yml/badge.svg)](https://github.com/mohitpal2621/rtsp-stream-viewer/actions/workflows/ci.yml)
+
 A web app for watching RTSP camera streams in the browser. You paste RTSP URLs, and each stream plays live in a grid with its own play/pause, full-screen and remove controls. A Go backend pulls each stream with FFmpeg and relays it to the browser over a WebSocket, where Media Source Extensions play it.
 
 Stack: Go 1.23 backend, React 19 + TypeScript frontend (Vite), FFmpeg, MediaMTX for the test streams.
