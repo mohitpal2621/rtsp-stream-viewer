@@ -6,8 +6,8 @@ export type PlayerState =
   | { kind: 'live' }
   /** The backend can't pull the stream and will try again at retryAt (epoch ms). */
   | { kind: 'retrying'; message: string; retryAt: number }
-  /** We can't reach the backend and will try again at retryAt (epoch ms). */
-  | { kind: 'offline'; message: string; retryAt: number }
+  /** The connection to the backend dropped or playback broke; reconnecting at retryAt (epoch ms). */
+  | { kind: 'reconnecting'; message: string; retryAt: number }
   /** Retrying won't help, e.g. the browser can't decode the stream. */
   | { kind: 'failed'; message: string }
 
@@ -86,7 +86,7 @@ export class StreamPlayer {
   }
 
   private readonly onVideoError = () => {
-    if (this.running && this.mediaSource) this.recover('The video decoder reported an error.')
+    if (this.running && this.mediaSource) this.recover('The browser couldn’t decode part of the stream.')
   }
 
   private async connect(): Promise<void> {
@@ -189,7 +189,7 @@ export class StreamPlayer {
       }
       buffer.mode = 'segments'
       buffer.addEventListener('updateend', () => this.onAppended())
-      buffer.addEventListener('error', () => this.recover('The video decoder reported an error.'))
+      buffer.addEventListener('error', () => this.recover('The browser couldn’t decode part of the stream.'))
       this.buffer = buffer
       this.pump()
     })
@@ -298,7 +298,7 @@ export class StreamPlayer {
     this.live = false
     const delay = Math.min(MAX_RECONNECT_DELAY, 2 ** this.failures)
     this.failures++
-    this.setState({ kind: 'offline', message, retryAt: Date.now() + delay * 1000 })
+    this.setState({ kind: 'reconnecting', message, retryAt: Date.now() + delay * 1000 })
     window.clearTimeout(this.reconnectTimer)
     this.reconnectTimer = window.setTimeout(() => {
       if (this.running) void this.connect()

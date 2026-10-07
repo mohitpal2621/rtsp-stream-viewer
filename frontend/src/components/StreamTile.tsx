@@ -123,9 +123,9 @@ function describe(state: PlayerState, paused: boolean): { tally: Tally; label: s
     case 'connecting':
       return { tally: 'standby', label: 'Connecting' }
     case 'retrying':
+      return { tally: 'standby', label: 'No signal' }
+    case 'reconnecting':
       return { tally: 'standby', label: 'Reconnecting' }
-    case 'offline':
-      return { tally: 'standby', label: 'Server unreachable' }
     case 'failed':
       return { tally: 'fault', label: 'Can’t play' }
   }
@@ -158,10 +158,10 @@ function Overlay({ state, paused }: { state: PlayerState; paused: boolean }) {
           <RetryCountdown key={state.retryAt} retryAt={state.retryAt} />
         </div>
       )
-    case 'offline':
+    case 'reconnecting':
       return (
         <div className="overlay overlay--problem" role="status">
-          <p className="overlay__title">Can’t reach the stream server</p>
+          <p className="overlay__title">Reconnecting</p>
           <p className="overlay__detail">{state.message}</p>
           <RetryCountdown key={state.retryAt} retryAt={state.retryAt} />
         </div>

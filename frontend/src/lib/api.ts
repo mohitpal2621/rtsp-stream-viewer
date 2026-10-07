@@ -21,12 +21,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     res = await fetch(API_BASE + path, init)
   } catch {
-    throw new ApiError(0, 'The server didn’t respond. It may be restarting or offline.')
+    throw new ApiError(0, 'The stream server didn’t respond. It may be restarting or offline.')
   }
   const body = await res.json().catch(() => ({}))
   if (!res.ok) {
     // A proxy or host in front of the backend may answer without our JSON body.
-    const fallback = res.status >= 500 ? 'The server isn’t responding right now.' : `Request failed (HTTP ${res.status}).`
+    const fallback = res.status >= 500 ? 'The stream server isn’t responding right now.' : `Request failed (HTTP ${res.status}).`
     throw new ApiError(res.status, body.error ?? fallback)
   }
   return body as T
