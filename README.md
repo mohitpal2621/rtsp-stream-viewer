@@ -8,7 +8,7 @@ Stack: Go 1.23 backend, React 19 + TypeScript frontend (Vite), FFmpeg, MediaMTX 
 
 ![Six streams on the wall: four live demo streams, one camera that can't be found and is retrying, and one paused stream](docs/screenshot.png)
 
-**Live demo:** LIVE_DEMO_URL
+**Live demo:** https://rtsp-stream-viewer-5p4t.onrender.com
 
 No login is needed. The demo runs on Render's free plan, which puts the server to sleep after 15 idle minutes, so the first visit can take up to a minute while it starts. The demo stream buttons under the URL box add looping test streams served from the same container, so you can try it without a camera.
 
