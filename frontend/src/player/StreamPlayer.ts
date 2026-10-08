@@ -17,6 +17,12 @@ type ServerMessage =
 
 /** Keep at most this much already-played video in the buffer, in seconds. */
 const KEEP_BEHIND = 6
+/**
+ * Fragments allowed to wait for the SourceBuffer. Chrome doesn't open a
+ * MediaSource in a tab that has never been visible, so without a limit a
+ * hidden tab would hold every fragment it receives.
+ */
+const MAX_QUEUED_FRAGMENTS = 4
 const MAX_RECONNECT_DELAY = 10
 /** WebSocket close code the backend uses to ask for a reconnect. */
 const TRY_AGAIN_LATER = 1013
@@ -44,7 +50,9 @@ export class StreamPlayer {
   private mediaSource: MediaSource | null = null
   private objectUrl: string | null = null
   private buffer: SourceBuffer | null = null
-  private queue: ArrayBuffer[] = []
+  private initSegment: ArrayBuffer | null = null // waiting to be appended first
+  private awaitingInit = false // the next binary message is the init segment
+  private queue: ArrayBuffer[] = [] // fragments waiting to be appended
   private running = false
   private attempt = 0 // bumped by every connect() and stop(), so a superseded connect() can tell
   private reconnectTimer: number | undefined
@@ -156,8 +164,18 @@ export class StreamPlayer {
   }
 
   private handleMedia(data: ArrayBuffer): void {
-    if (!this.mediaSource) return // no init segment yet
-    this.queue.push(data)
+    if (!this.mediaSource) return // no init message yet
+    if (this.awaitingInit) {
+      this.initSegment = data
+      this.awaitingInit = false
+    } else {
+      this.queue.push(data)
+      // Every fragment starts on a keyframe, so dropping the oldest ones
+      // only skips ahead.
+      if (this.queue.length > MAX_QUEUED_FRAGMENTS) {
+        this.queue.splice(0, this.queue.length - MAX_QUEUED_FRAGMENTS)
+      }
+    }
     this.pump()
   }
 
@@ -174,6 +192,8 @@ export class StreamPlayer {
     }
 
     this.detachMedia()
+    this.initSegment = null
+    this.awaitingInit = true
     this.queue = []
     this.live = false
     this.lastEnd = 0
@@ -225,12 +245,14 @@ export class StreamPlayer {
       }
     }
 
-    const next = this.queue.shift()
+    const isInit = this.initSegment !== null
+    const next = this.initSegment ?? this.queue.shift()
+    this.initSegment = null
     if (!next) return
     try {
       buffer.appendBuffer(next)
     } catch (err) {
-      if (err instanceof DOMException && err.name === 'QuotaExceededError') {
+      if (!isInit && err instanceof DOMException && err.name === 'QuotaExceededError') {
         // The buffer is full, most likely because playback stalled. Jump to
         // the newest video and free what is behind it. If there is nothing
         // to free, drop this fragment: the next one starts on a keyframe.
